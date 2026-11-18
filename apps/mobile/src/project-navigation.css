@@ -1,0 +1,194 @@
+.project-navigation-section {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-navigation-title {
+  margin: 0;
+  padding: 20px 8px 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.thread-screen .project-navigation-section .project-group {
+  margin: 0 0 8px;
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.thread-screen .project-navigation-section .project-heading {
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+}
+
+.thread-screen .project-navigation-section .project-heading-button {
+  min-height: 40px;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 7px;
+}
+
+.thread-screen .project-navigation-section .project-heading-copy {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.thread-screen .project-navigation-section .project-heading-copy strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.project-folder-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #74746e;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.thread-screen .project-navigation-section .project-task-count {
+  min-width: 14px;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-light);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.thread-screen .project-navigation-section .thread-card {
+  min-width: 0;
+  min-height: 42px;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 8px 9px calc(8px + var(--thread-indent, 0px));
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.thread-screen .project-navigation-section .project-threads .thread-card {
+  padding-left: calc(28px + var(--thread-indent, 0px));
+}
+
+.thread-screen .project-navigation-section .thread-card:active {
+  background: var(--surface-pressed);
+}
+
+.thread-screen .project-navigation-section .thread-state {
+  width: 12px;
+  height: 16px;
+  margin: 0;
+}
+
+.thread-screen .project-navigation-section .thread-state span {
+  width: 5px;
+  height: 5px;
+}
+
+.thread-screen .project-navigation-section .thread-title-row {
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.thread-screen .project-navigation-section .thread-title-row strong {
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.thread-screen .project-navigation-section .thread-time {
+  color: var(--muted-light);
+  font-size: 9px;
+}
+
+.thread-screen .project-navigation-section .state-label {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  font-size: 8px;
+}
+
+.thread-screen .project-navigation-section .unread-badge {
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  padding-inline: 4px;
+  font-size: 8px;
+}
+
+.thread-screen .project-navigation-section .thread-card-agent::before {
+  align-self: center;
+  margin-top: 0;
+}
+
+.thread-screen .project-navigation-section .subagent-toggle {
+  min-height: 28px;
+  padding: 3px 8px 3px calc(28px + var(--thread-indent, 0px));
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.thread-screen .project-navigation-section .project-threads .subagent-toggle {
+  padding-left: calc(46px + var(--thread-indent, 0px));
+}
+
+.project-more-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  max-width: calc(100% - 28px);
+  margin: 0 0 3px 28px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: left;
+}
+
+.project-more-button:active {
+  background: var(--surface-pressed);
+}
+
+.project-more-count {
+  color: var(--muted-light);
+}
+
+.project-navigation-empty {
+  margin: 0;
+  padding: 7px 8px 10px 46px;
+  color: var(--muted-light);
+  font-size: 11px;
+}
+
+.recent-navigation {
+  padding-bottom: 16px;
+}
+
+.thread-screen .recent-navigation > .thread-card + .thread-card {
+  border-top: 1px solid color-mix(in srgb, var(--line) 35%, transparent);
+}

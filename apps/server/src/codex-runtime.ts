@@ -1,6 +1,9 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { posix } from "node:path";
+
+// These paths describe a macOS bundle even when the detector is tested on Windows.
+const { basename, dirname, isAbsolute, join } = posix;
 
 export interface PackagedNodeReplRuntime {
   resourcesDirectory: string;

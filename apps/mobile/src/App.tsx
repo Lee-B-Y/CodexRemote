@@ -215,6 +215,7 @@ export function App() {
       ) : (
         <ThreadList
           threads={remote.threads}
+          projects={remote.projects}
           phase={remote.phase}
           phaseDetail={remote.phaseDetail || (remote.phase === 'connected' && !remote.codexReady ? 'Bridge 已连接，但 Codex app-server 尚未就绪' : '')}
           onSelect={openRootThread}

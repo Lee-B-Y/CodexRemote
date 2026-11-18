@@ -1,0 +1,15 @@
+{
+  "node": "C:/Program Files/nodejs/node.exe",
+  "powershell": "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+  "ssh": "C:/Windows/System32/OpenSSH/ssh.exe",
+  "codexHome": "C:/Users/YOUR_USER/.codex",
+  "testedDesktopVersion": "26.1111.2228.0",
+  "token": "",
+  "serverId": "windows-codex",
+  "publicUrl": "https://codex.example.com",
+  "sshHost": "YOUR_SSH_HOST",
+  "tunnelUser": "codex-remote-tunnel",
+  "fileRoots": [
+    "C:/work/your-project"
+  ]
+}

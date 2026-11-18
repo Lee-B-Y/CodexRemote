@@ -7,3 +7,8 @@ coverage/
 *.log
 .DS_Store
 runtime/
+evidence/
+deploy/windows/private/
+deploy/android/private/
+apps/mobile/android/local.properties
+apps/mobile/artifacts/

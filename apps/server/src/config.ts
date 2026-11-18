@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
+import { resolveWindowsDesktopCodex } from './windows-runtime.js';
 import {
   detectPackagedNodeReplRuntime,
   nodeReplRuntimeConfigArgs,
@@ -67,7 +68,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     token,
     tokenDigest: createHash("sha256").update(token).digest(),
     allowedOrigins: new Set([...defaultOrigins, ...configuredOrigins]),
-    codexBin: env.CODEX_BIN ?? "codex",
+    codexBin: process.platform === 'win32' && env.CMR_DESKTOP_INSTALL_DIRECTORY
+      ? resolveWindowsDesktopCodex(env.CMR_DESKTOP_INSTALL_DIRECTORY)
+      : env.CODEX_BIN ?? "codex",
     codexArgs: nodeReplRuntimeConfigArgs(packagedNodeReplRuntime, codexHome),
     packagedNodeReplRuntime,
     codexHome,

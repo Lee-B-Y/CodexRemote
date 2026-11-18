@@ -1,6 +1,7 @@
 import type { ClientMessage, ConnectionPhase, ServerMessage } from '../types/protocol';
 import { isServerMessage, WIRE_PROTOCOL } from '../types/protocol';
 import { toWebSocketUrl } from './configStore';
+import { diagnoseConnection } from './connectionDiagnostics';
 
 interface RemoteSocketOptions {
   serverUrl: string;
@@ -27,6 +28,7 @@ export class RemoteSocket {
   private manuallyClosed = false;
   private welcomed = false;
   private networkListenersInstalled = false;
+  private connectionAttempt = 0;
 
   constructor(private readonly options: RemoteSocketOptions) {}
 
@@ -83,6 +85,7 @@ export class RemoteSocket {
     this.options.onPhase(reconnecting ? 'reconnecting' : 'connecting');
     const tokenProtocol = `token.${base64UrlUtf8(this.options.token)}`;
     const socket = new WebSocket(wsUrl, [WIRE_PROTOCOL, tokenProtocol]);
+    const attempt = ++this.connectionAttempt;
     this.socket = socket;
 
     socket.onopen = () => {
@@ -112,7 +115,7 @@ export class RemoteSocket {
 
     socket.onerror = () => {
       if (socket === this.socket && !this.welcomed) {
-        this.options.onPhase('error', '连接失败，请检查地址和配对令牌');
+        this.options.onPhase('error', 'WebSocket 连接失败，正在检查 HTTPS 与本机服务状态');
       }
     };
 
@@ -127,6 +130,10 @@ export class RemoteSocket {
             ? '无法连接主机，请检查手机 Wi-Fi、服务器地址和配对令牌'
             : `连接已关闭（代码 ${event.code}）`);
         this.scheduleReconnect(detail);
+        if (event.code === 1006) void diagnoseConnection(this.options.serverUrl).then(diagnosis=>{
+          if (!this.manuallyClosed && attempt===this.connectionAttempt && !this.welcomed)
+            this.options.onPhase('reconnecting', diagnosis+'；正在自动重试');
+        }).catch(()=>{});
       }
     };
   }

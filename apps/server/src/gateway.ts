@@ -29,6 +29,7 @@ import { GitDiffError, readGitDiff, type GitDiffSnapshot } from "./git-diff.js";
 import { PromptQueueStore, type StoredPromptQueueItem } from "./prompt-queue.js";
 import { SyncJournal, ThreadIndexStore } from "./sync-state.js";
 import { SubmissionLedger, SubmissionLedgerError } from './submission-ledger.js';
+import { readDesktopProjects } from "./desktop-projects.js";
 import { asyncUserInputs, nativeUserInput, questionReplyText, validateUserInputAnswers } from "./user-input.js";
 
 const MAX_WS_BUFFERED_BYTES = 8 * 1024 * 1024;
@@ -531,10 +532,18 @@ export class MobileGateway {
     }
 
     try {
+      if ('threadId' in message && typeof message.threadId === 'string'
+        && ['turn.start','turn.interrupt','thread.settings','thread.compact','prompt.queue.resume'].includes(message.type))
+        this.assertControlState(message.threadId);
       switch (message.type) {
         case "ping":
           this.send(socket, { type: "pong", id: message.id });
           break;
+        case "projects.list": {
+          const projects = await readDesktopProjects(this.config.codexHome);
+          this.send(socket, { type: "projects.snapshot", requestId: message.requestId, ...projects });
+          break;
+        }
         case "user-input.list": {
           const threadId = requiredString(message.threadId, "threadId");
           this.socketThreads.get(socket)?.add(threadId);
@@ -930,16 +939,29 @@ export class MobileGateway {
     }
   }
 
+  private assertControlState(threadId: string): void {
+    if (this.desktopIpc?.isControlStateUncertain?.(threadId) || (this.desktopIpc?.supported && !this.desktopIpc.ready))
+      throw new GatewayRequestError('submission_state_unknown','桌面 Desktop IPC 状态不确定，已暂停控制；刷新历史并等待 owner 恢复，未启动第二份任务。');
+  }
+
   private async submitPreparedTurn(
     threadId: string,
     turnParams: Record<string, unknown>,
     deliveryMode: "auto" | "steer",
   ): Promise<unknown> {
+    this.assertControlState(threadId);
     const clientUserMessageId = typeof turnParams.clientUserMessageId === "string" ? turnParams.clientUserMessageId : undefined;
-    const desktopOwned = this.desktopIpc?.hasOwner(threadId) === true;
     const result = await this.submitTurnIdempotently(threadId, clientUserMessageId, JSON.stringify(turnParams), async () => {
+      // Persistence yields: authority and activity may have changed while waiting for disk.
+      this.assertControlState(threadId);
+      const desktopOwned = this.desktopIpc?.hasOwner(threadId) === true;
       if (deliveryMode === "steer") return this.steerCurrentTurn(threadId, turnParams);
-      if (!desktopOwned) return this.bridge.request("turn/start", turnParams);
+      if (!desktopOwned) {
+        this.assertAppServerReady();
+        const value = await this.bridge.request("turn/start", turnParams);
+        this.rememberAppServerStartedTurn(threadId, value);
+        return value;
+      }
       try {
         return await this.desktopIpc.steerTurn(threadId, turnParams);
       } catch (error) {
@@ -953,8 +975,11 @@ export class MobileGateway {
         throw error;
       }
     });
-    if (deliveryMode !== "steer" && !desktopOwned) this.rememberAppServerStartedTurn(threadId, result);
     return result;
+  }
+
+  private assertAppServerReady(): void {
+    if (!this.bridge.ready) throw new GatewayRequestError('submission_state_unknown','辅助 App Server 尚未就绪，已暂停提交；恢复后请先刷新历史。');
   }
 
   private async steerCurrentTurn(threadId: string, turnParams: Record<string, unknown>): Promise<unknown> {
@@ -971,6 +996,7 @@ export class MobileGateway {
     }
     const expectedTurnId = this.appServerCurrentTurnIds.get(threadId);
     if (!expectedTurnId) throw new GatewayRequestError("no_active_turn", "尚未确认当前 turnId，无法安全引导。");
+    this.assertAppServerReady();
     return this.bridge.request("turn/steer", {
       threadId,
       clientUserMessageId: turnParams.clientUserMessageId,
@@ -1096,14 +1122,17 @@ export class MobileGateway {
   }
 
   private async startQueuedTurn(threadId: string, turnParams: Record<string, unknown>): Promise<unknown> {
+    this.assertControlState(threadId);
     if (this.isThreadActive(threadId)) throw new GatewayRequestError("queue_turn_active", "检测到新的活动 turn，队列继续等待，未创建竞争 turn。");
     const clientUserMessageId = typeof turnParams.clientUserMessageId === "string" ? turnParams.clientUserMessageId : undefined;
-    const desktopOwned = this.desktopIpc?.hasOwner(threadId) === true;
     const result = await this.submitTurnIdempotently(threadId, clientUserMessageId, JSON.stringify(turnParams), async () => {
+      this.assertControlState(threadId);
+      if (this.isThreadActive(threadId) || this.desktopIpc?.hasOwner(threadId)) throw new GatewayRequestError("submission_state_unknown", "落盘期间会话状态已变化，队列暂停；请刷新历史确认后重新安排，未创建竞争 turn。");
+      this.assertAppServerReady();
       try {
-        return desktopOwned
-          ? await this.desktopIpc!.startTurn(threadId, turnParams)
-          : await this.bridge.request("turn/start", turnParams);
+        const value = await this.bridge.request("turn/start", turnParams);
+        this.rememberAppServerStartedTurn(threadId, value);
+        return value;
       } catch (error) {
         if (isUncertainDesktopSubmissionError(error)) {
           throw new GatewayRequestError("submission_state_unknown", "排队提示词的启动结果不确定；已暂停自动重试，请刷新历史确认。");
@@ -1111,7 +1140,6 @@ export class MobileGateway {
         throw error;
       }
     });
-    if (!desktopOwned) this.rememberAppServerStartedTurn(threadId, result);
     return result;
   }
 
@@ -1145,7 +1173,6 @@ export class MobileGateway {
     clientUserMessageId: string | undefined,
     fingerprint: string,
     submit: () => Promise<unknown>,
-    durable = false,
   ): Promise<unknown> {
     if (!clientUserMessageId) return submit();
     this.pruneTurnSubmissions();
@@ -1161,7 +1188,7 @@ export class MobileGateway {
       return existing.promise;
     }
     const promise = Promise.resolve().then(async()=>{
-      try { if (durable) await this.submissionLedger?.reserve(key, fingerprint); }
+      try { await this.submissionLedger?.reserve(key, fingerprint); }
       catch(error) {
         if(error instanceof SubmissionLedgerError)throw new GatewayRequestError(error.code,error.message);
         throw error;
@@ -1571,8 +1598,7 @@ export class MobileGateway {
         }
         this.submittedInputs.add(this.submittedInputKey(input));
         this.broadcastUserInputs(threadId);
-      }, true),
-      true,
+      }),
     );
     this.send(socket, { type: "user-input.submitted", requestId: message.requestId, threadId, inputId });
   }

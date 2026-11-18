@@ -101,6 +101,13 @@ export interface ApprovalRequest {
   raw: unknown;
 }
 
+export interface DesktopProject {
+  id: string;
+  name: string;
+  rootPaths: string[];
+  threadIds: string[];
+}
+
 export interface UserInputOption { label: string; description?: string }
 export interface UserInputQuestion {
   id: string;
@@ -121,6 +128,7 @@ export interface UserInputRequest {
 
 export type ClientMessage =
   | { type: "ping"; id?: string }
+  | { type: "projects.list"; requestId?: string }
   | { type: "user-input.list"; requestId?: string; threadId: string }
   | { type: "user-input.answer"; requestId?: string; threadId: string; inputId: string; answers: Record<string, string[]>; clientUserMessageId: string }
   | { type: "threads.list"; requestId?: string; limit?: number }
@@ -159,6 +167,7 @@ export type ClientMessage =
 
 export type ServerMessagePayload =
   | { type: "welcome"; version: string; serverId: string; codexReady: boolean; syncVersion?: string; latestCursor?: number; threadIndexVersion?: number }
+  | { type: "projects.snapshot"; requestId?: string; projects: DesktopProject[]; available: boolean }
   | { type: "user-input.snapshot"; requestId?: string; threadId: string; requests: UserInputRequest[] }
   | { type: "user-input.submitted"; requestId?: string; threadId: string; inputId: string }
   | { type: "pong"; id?: string }

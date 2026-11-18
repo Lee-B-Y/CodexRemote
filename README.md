@@ -1,5 +1,11 @@
 # Codex Mobile Remote（Android）
 
+> **Lee 的 Windows 自托管适配版**，基于 [qy1603429908/CodexRemote](https://github.com/qy1603429908/CodexRemote)，保留上游许可证。当前分支为 `lee/windows-aliyun`；独立的主动问答修复见 [上游 PR #1](https://github.com/qy1603429908/CodexRemote/pull/1)。
+>
+> 本分支增加 Desktop 项目与“最近”列表、隐藏辅助 Guardian review、Windows 路径和 Desktop IPC v13 适配、主动提问卡片与回答，以及隐藏窗口运行的 Bridge / SSH 计划任务。Windows 部署见 [自托管说明](docs/windows-self-hosted.md)，问答协议见 [主动提问说明](docs/user-input-questions.md)。
+>
+> 公开配置使用占位符。Bridge 与安卓客户端需要配套升级；单独更新客户端连接旧 Bridge 可能出现 `unknown_message`。
+
 一个自托管、可直接侧载的 Android Codex 遥控器。手机连接你自己的 Host bridge；模型 endpoint、provider 和 API Key 始终留在电脑端。
 
 > 项目仍依赖 Codex Desktop 的私有 IPC 与实验性 app-server 协议。升级 Codex Desktop/CLI 后，应重新执行协议与真机回归。
@@ -18,7 +24,8 @@ Host bridge（Node.js）
 
 ## 功能
 
-- 按 `cwd`/项目目录分页展示 Codex 任务，支持打开、恢复和新建任务；
+- 按 Desktop 的显式项目、名称及顺序展示会话；“最近”包含普通会话，也包含未归入项目的会话，支持打开、恢复和新建；
+- 将 agent 主动提问显示为可回答的卡片，历史结构化回复显示为问答，隐藏辅助 Guardian review 会话；
 - 与 Desktop GUI 同时查看同一任务，并同步 Markdown 回复、工具调用、Subagent、TODO、思考状态、审批和 Git diff；
 - 选择 Host 返回的模型、reasoning effort 与权限/审阅预设；
 - 支持 `/status`、`/compact`、模型、effort 和 Skill 等引导命令；

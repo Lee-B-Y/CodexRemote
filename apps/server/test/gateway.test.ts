@@ -549,6 +549,12 @@ describe("MobileGateway", () => {
     expect(messages.find(m => m.requestId === "after-old-turn")?.requests).toMatchObject([{ turnId: "turn-active" }]);
   });
 
+  it("returns the Desktop projects whitelist and availability on the authenticated connection", async () => {
+    const { ws, messages } = await inputClient();
+    ws.send(JSON.stringify({ type: "projects.list", requestId: "projects" }));
+    await waitFor(() => messages.some(m => m.requestId === "projects"));
+    expect(messages.find(m => m.requestId === "projects")).toMatchObject({ type: "projects.snapshot", projects: [], available: false });
+  });
 
   it("reconnects with a fresh authoritative input snapshot without replaying older forms", async () => {
     const { ws, messages, bridge } = await inputClient();

@@ -13,6 +13,7 @@ import { TransientActivity } from './TransientActivity';
 import { ElapsedTime } from './ElapsedTime';
 import type {UserInputRequest} from '../types/protocol';
 import {UserQuestionCard} from './QuestionCard';
+import {isGuardianThread} from '../lib/threadVisibility';
 
 interface ConversationScreenProps {
   thread: RemoteThread;
@@ -60,7 +61,7 @@ interface ConversationScreenProps {
 }
 
 
-type AgentTarget = { id: string; label: string; state: string };
+type AgentTarget = { id: string; label: string; state: string; guardian?: true };
 
 type UnknownRecord = Record<string, unknown>;
 function record(value: unknown): UnknownRecord | null {
@@ -79,11 +80,12 @@ function terminalRank(state: string): number {
 
 function mergeAgentTarget(agents: Map<string, AgentTarget>, next: AgentTarget): void {
   const current = agents.get(next.id);
+  const guardian = current?.guardian || next.guardian ? { guardian: true as const } : {};
   if (current && terminalRank(current.state) >= terminalRank(next.state)) {
-    agents.set(next.id, { ...current, label: current.label !== next.id.slice(0, 8) ? current.label : next.label });
+    agents.set(next.id, { ...current, ...guardian, label: current.label !== next.id.slice(0, 8) ? current.label : next.label });
     return;
   }
-  agents.set(next.id, { ...next, label: current?.label && current.label !== next.id.slice(0, 8) ? current.label : next.label });
+  agents.set(next.id, { ...next, ...guardian, label: current?.label && current.label !== next.id.slice(0, 8) ? current.label : next.label });
 }
 
 export function subagentsFromMessage(message: RemoteMessage): AgentTarget[] {
@@ -112,12 +114,13 @@ export function subagentsFromMessage(message: RemoteMessage): AgentTarget[] {
     const status = record(thread?.status);
     const state = String(record(states?.[id])?.status ?? status?.type ?? thread?.state ?? (message.status === 'streaming' ? 'active' : 'unknown'));
     const label = String(thread?.agentNickname ?? thread?.agent_nickname ?? spawn?.agent_nickname ?? spawn?.agentNickname ?? thread?.name ?? thread?.title ?? id.slice(0, 8));
-    mergeAgentTarget(agents, { id, label, state });
+    mergeAgentTarget(agents, { id, label, state, ...(thread && isGuardianThread(thread) ? { guardian: true as const } : {}) });
   }
   if (states) {
     for (const [id, value] of Object.entries(states)) {
       const agent = record(value);
-      mergeAgentTarget(agents, { id, label: String(agent?.nickname ?? agent?.name ?? id.slice(0, 8)), state: String(agent?.status ?? 'active') });
+      mergeAgentTarget(agents, { id, label: String(agent?.nickname ?? agent?.name ?? id.slice(0, 8)), state: String(agent?.status ?? 'active'),
+        ...(agent && isGuardianThread(agent) ? { guardian: true as const } : {}) });
     }
   }
   const receiverIds = detail?.receiverThreadIds ?? nestedItem?.receiverThreadIds;
@@ -230,8 +233,13 @@ export function resolveConversationEntryAgentNames(
   threads: RemoteThread[],
 ): ConversationEntry[] {
   const threadsById = new Map(threads.map((thread) => [thread.id, thread] as const));
+  const guardianIds = new Set(threads.filter(isGuardianThread).map(thread => thread.id));
+  for (const entry of entries) for (const target of entry.agentTargets) {
+    if (target.guardian || isGuardianThread(target)) guardianIds.add(target.id);
+  }
   const resolveTargets = (targets: AgentTarget[]): AgentTarget[] => targets.flatMap((target) => {
     const thread = threadsById.get(target.id);
+    if(guardianIds.has(target.id) || target.guardian || isGuardianThread(thread??target))return [];
     const candidates = [thread?.agentNickname, target.label, thread?.title]
       .filter((value): value is string => typeof value === 'string' && !isOpaqueAgentLabel(value, target.id));
     const label = candidates[0]?.trim();
@@ -352,6 +360,7 @@ export function ConversationScreen({ thread, messages, subagents: threadSubagent
   const subagents = useMemo(() => {
     const combined = new Map<string, { id: string; label: string; state: string; thread?: RemoteThread }>();
     for (const agent of threadSubagents) {
+      if(isGuardianThread(agent))continue;
       combined.set(agent.id, {
         id: agent.id,
         label: agent.agentNickname || agent.title || 'Subagent',
@@ -360,6 +369,7 @@ export function ConversationScreen({ thread, messages, subagents: threadSubagent
       });
     }
     for (const activity of parsedSubagents) {
+      if(isGuardianThread(activity))continue;
       const existing = combined.get(activity.id);
       const activityTerminal = /complete|completed|fail|failed|error|errored|cancel|interrupt|shutdown|notfound/.test(activity.state.toLowerCase());
       const existingNeedsEvidence = existing?.state === 'not_loaded' || existing?.state === 'unknown';

@@ -17,6 +17,21 @@ function collab(detail: Record<string, unknown>): RemoteMessage {
 }
 
 describe('Subagent presentation', () => {
+  it('hides Guardian receivers even when their index entry is missing and other branches repeat the id', () => {
+    const guardianId = '00000000-0000-4000-8000-000000000001';
+    const messages = [collab({
+      receiverThreads: [{ threadId: guardianId, thread: { id: guardianId, agentNickname: 'Worker',
+        source: { subagent: { other: 'guardian' } }, status: { type: 'idle' } } }],
+      agentsStates: { [guardianId]: { status: 'completed', nickname: 'Worker' } },
+      receiverThreadIds: [guardianId],
+    }), { ...collab({ agentsStates: { [guardianId]: { nickname: 'Worker', status: 'completed' } } }), id: 'later' }];
+    const entries = resolveConversationEntryAgentNames(groupConsecutiveToolMessages(messages), []);
+    expect(entries.every(entry => entry.agentTargets.length === 0)).toBe(true);
+    for (const entry of entries) if (entry.type === 'tool-group') {
+      expect(Object.values(entry.agentTargetsByMessage).every(targets => targets.length === 0)).toBe(true);
+    }
+  });
+
   it('does not downgrade interrupted to generic complete receiver state', () => {
     expect(subagentsFromMessages([collab({
       agentsStates: { child: { status: 'interrupted', nickname: 'Worker' } },
@@ -27,11 +42,11 @@ describe('Subagent presentation', () => {
 
   it('recovers Subagent ids from compact cached collaboration text', () => {
     const cached = collab({});
-    cached.content = 'Agent: 019f99bb-d520-7431-83cc-6636fdcf61b3\n019f99bb-d520-7431-83cc-6636fdcf61b3: running';
+    cached.content = 'Agent: 00000000-0000-4000-8000-000000000002\n00000000-0000-4000-8000-000000000002: running';
     cached.detail = undefined;
     expect(subagentsFromMessages([cached])).toEqual([{
-      id: '019f99bb-d520-7431-83cc-6636fdcf61b3',
-      label: '019f99bb',
+      id: '00000000-0000-4000-8000-000000000002',
+      label: '00000000',
       state: 'running',
     }]);
   });
@@ -40,11 +55,11 @@ describe('Subagent presentation', () => {
     const cached = collab({});
     cached.itemType = 'subagentActivity';
     cached.toolName = 'Subagent 活动';
-    cached.content = 'started\n019f99bb-d520-7431-83cc-6636fdcf61b3\n/agent/path';
+    cached.content = 'started\n00000000-0000-4000-8000-000000000002\n/agent/path';
     cached.detail = undefined;
     expect(subagentsFromMessages([cached])).toEqual([{
-      id: '019f99bb-d520-7431-83cc-6636fdcf61b3',
-      label: '019f99bb',
+      id: '00000000-0000-4000-8000-000000000002',
+      label: '00000000',
       state: 'unknown',
     }]);
     const prompt = { ...cached, itemType: 'collabAgentToolCall', toolName: 'Subagent · spawnAgent' };
@@ -52,8 +67,8 @@ describe('Subagent presentation', () => {
   });
 
   it('reads wait-agent names from structured receiverThreads and ignores UUID examples in the report body', () => {
-    const targetId = '019f9c86-c712-7be1-8699-597617b734bb';
-    const unrelatedId = '019f99bb-d520-7431-83cc-6636fdcf61b3';
+    const targetId = '00000000-0000-4000-8000-000000000001';
+    const unrelatedId = '00000000-0000-4000-8000-000000000002';
     const wait = collab({
       receiverThreadIds: [targetId],
       receiverThreads: [{
@@ -77,7 +92,7 @@ describe('Subagent presentation', () => {
   });
 
   it('reads a wait-agent nickname from nested source metadata when the thread field has no direct nickname', () => {
-    const targetId = '019f9c86-fc9e-7253-936d-43c5d01fbdba';
+    const targetId = '00000000-0000-4000-8000-000000000003';
     const wait = collab({
       receiverThreads: [{
         threadId: targetId,
@@ -97,10 +112,10 @@ describe('Subagent presentation', () => {
   });
 
   it('resolves opaque ids to live agent nicknames and hides unresolved identifiers', () => {
-    const cached = collab({ receiverThreadIds: ['019f99bb-d520-7431-83cc-6636fdcf61b3'] });
+    const cached = collab({ receiverThreadIds: ['00000000-0000-4000-8000-000000000002'] });
     const rawEntries = groupConsecutiveToolMessages([cached]);
     const thread: RemoteThread = {
-      id: '019f99bb-d520-7431-83cc-6636fdcf61b3', title: 'Audit worker', preview: '', updatedAt: 1,
+      id: '00000000-0000-4000-8000-000000000002', title: 'Audit worker', preview: '', updatedAt: 1,
       state: 'running', unread: 0, cwd: '/tmp', modelProvider: '', parentThreadId: 'parent',
       agentNickname: 'Singer', agentRole: 'worker', source: null,
     };

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { ModelOption } from '../types/protocol';
+import { isAbsoluteHostPath } from '../lib/hostPaths';
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from './Icons';
 
 interface NewThreadSheetProps {
@@ -18,7 +19,7 @@ export function NewThreadSheet({ models, defaultModel, onClose, onStart }: NewTh
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!cwd.trim().startsWith('/')) {
+    if (!isAbsoluteHostPath(cwd.trim())) {
       setError('请输入电脑上的绝对路径');
       return;
     }
@@ -37,7 +38,7 @@ export function NewThreadSheet({ models, defaultModel, onClose, onStart }: NewTh
         <form className="new-thread-form" onSubmit={submit}>
           <label>
             <span>电脑工作目录</span>
-            <input value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="/path/to/project" autoCapitalize="none" autoCorrect="off" />
+            <input value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="D:/path/to/project 或 /home/lee/project" autoCapitalize="none" autoCorrect="off" />
           </label>
           <button className="advanced-toggle" type="button" onClick={() => setShowAdvanced((value) => !value)}>
             <span>模型高级设置</span>{showAdvanced ? <ChevronUpIcon /> : <ChevronDownIcon />}

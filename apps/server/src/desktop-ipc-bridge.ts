@@ -139,6 +139,7 @@ export class DesktopIpcBridge extends EventEmitter {
   private readonly follows = new Map<string, FollowTarget>();
   private readonly conversations = new Map<string, DesktopConversation>();
   private readonly revisions = new Map<string, number>();
+  private readonly stateVersions = new Map<string, number>();
   // Retain this knowledge across resets: losing an owner is not proof of idle.
   private readonly desktopOwnedIds = new Set<string>();
   private readonly refreshTimers = new Map<string, NodeJS.Timeout>();
@@ -251,19 +252,14 @@ export class DesktopIpcBridge extends EventEmitter {
     conversationId: string,
     turnStartParams: Record<string, unknown>,
   ): Promise<unknown> {
+    const request = { ...turnStartParams, input: desktopInput(turnStartParams.input), clientUserMessageId: typeof turnStartParams.clientUserMessageId === "string" ? turnStartParams.clientUserMessageId : randomUUID() };
+    const current = this.stateVersions.get(conversationId) === 13;
     const result = await this.requestFollower(
       conversationId,
       "thread-follower-start-turn",
       {
         conversationId,
-        turnStartParams: {
-          ...turnStartParams,
-          input: desktopInput(turnStartParams.input),
-          clientUserMessageId:
-            typeof turnStartParams.clientUserMessageId === "string"
-              ? turnStartParams.clientUserMessageId
-              : randomUUID(),
-        },
+        ...(current ? { turnStart: { request, context: {} } } : { turnStartParams: request }),
       },
       120_000,
     );
@@ -346,10 +342,13 @@ export class DesktopIpcBridge extends EventEmitter {
     conversationId: string,
     mode: "user" | "system" = "user",
   ): Promise<unknown> {
+    const current = this.stateVersions.get(conversationId) === 13;
+    const turnId = activeConversationTurnId(this.conversations.get(conversationId));
+    if (current && !turnId) throw new Error("No observed active Desktop turn; refresh history before interrupting.");
     return this.requestFollower(
       conversationId,
       "thread-follower-interrupt-turn",
-      { conversationId, mode },
+      { conversationId, mode: current ? (mode === "user" ? "user-stop" : "system") : mode, ...(current ? { expectedTurnId: turnId } : {}) },
     );
   }
 
@@ -493,7 +492,9 @@ export class DesktopIpcBridge extends EventEmitter {
         type: "request",
         requestId,
         method,
-        version: IPC_VERSION[method] ?? 0,
+        version: this.stateVersions.get(conversationId) === 13
+          ? ({ "thread-follower-start-turn": 2, "thread-follower-interrupt-turn": 4, "thread-follower-update-thread-settings": 2 }[method] ?? IPC_VERSION[method] ?? 0)
+          : IPC_VERSION[method] ?? 0,
         sourceClientId: this.clientId,
         targetClientIds: [ownerClientId],
         params,
@@ -651,7 +652,19 @@ export class DesktopIpcBridge extends EventEmitter {
     )
       return;
     const expectedVersion = IPC_VERSION[frame.method];
-    if (expectedVersion != null && (frame.version ?? 0) !== expectedVersion) {
+    const supportedCurrent = (frame.method === "thread-stream-state-changed" && frame.version === 13)
+      || (frame.method === "thread-queued-followups-changed" && frame.version === 3)
+      || (frame.method === "thread-read-state-changed" && frame.version === 3);
+    if (expectedVersion != null && (frame.version ?? 0) !== expectedVersion && !supportedCurrent) {
+      if (frame.method === "thread-stream-state-changed" && typeof frame.params.conversationId === "string") {
+        const id = frame.params.conversationId;
+        this.desktopOwnedIds.add(id);
+        this.conversations.delete(id);
+        this.stateVersions.delete(id);
+        const target = this.follows.get(id);
+        if (target) delete target.ownerClientId;
+        this.emit("ownerLost", id);
+      }
       this.emit(
         "diagnostic",
         new Error(
@@ -772,6 +785,7 @@ export class DesktopIpcBridge extends EventEmitter {
         }
         existingTarget.ownerClientId = frame.sourceClientId;
         this.desktopOwnedIds.add(conversationId);
+        this.stateVersions.set(conversationId, frame.version ?? 11);
         this.follows.set(conversationId, existingTarget);
         const normalized = normalizeDesktopConversation(
           conversationId,

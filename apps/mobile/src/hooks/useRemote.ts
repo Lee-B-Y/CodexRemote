@@ -2,7 +2,9 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RemoteConfig } from '../lib/configStore';
 import { RemoteSocket } from '../lib/RemoteSocket';
+import { isAbsoluteHostPath } from '../lib/hostPaths';
 import {parseQuestionReply} from '../lib/userInput';
+import {isGuardianThread} from '../lib/threadVisibility';
 import { cancelApprovalNotification, cancelThreadAttentionNotification, notifyApprovalRequested, notifyCompactionFailed, notifyThreadAttention, notifyTurnFinished } from '../lib/notifications';
 import { downloadHostFile, saveHostFile, uploadRemoteFile } from '../lib/fileTransfer';
 import { NotificationGenerationGuard, NotificationOperationQueue, settleGuardedNotification } from '../lib/notificationGuard';
@@ -25,6 +27,7 @@ import type {
   PermissionMode,
   ThreadSummary,
   WireApprovalRequest,
+  DesktopProject,
   UserInputRequest,
 } from '../types/protocol';
 import { createRequestId } from '../types/protocol';
@@ -39,8 +42,8 @@ function stringValue(...values: unknown[]): string | undefined {
   return values.find((value): value is string => typeof value === 'string' && value.length > 0);
 }
 
-export function shouldNotifyThreadCompletion(thread: Pick<RemoteThread, 'parentThreadId'> | undefined): boolean {
-  return !thread?.parentThreadId;
+export function shouldNotifyThreadCompletion(thread: (Pick<RemoteThread, 'parentThreadId'> & Partial<RemoteThread>) | undefined): boolean {
+  return !thread?.parentThreadId&&!(thread&&isGuardianThread(thread));
 }
 
 export function staleApprovalWireIds(
@@ -246,7 +249,7 @@ export function attachmentsFromCanonicalUserItem(itemValue: unknown): RemoteAtta
   if (!item) return [];
   const byPath = new Map<string, RemoteAttachment>();
   const add = (pathValue: unknown, nameValue?: unknown, typeValue?: unknown, mimeValue?: unknown) => {
-    if (typeof pathValue !== 'string' || !pathValue.startsWith('/')) return;
+    if (typeof pathValue !== 'string' || !isAbsoluteHostPath(pathValue)) return;
     const mimeType = typeof mimeValue === 'string' ? mimeValue : undefined;
     byPath.set(pathValue, {
       type: attachmentType(typeValue, pathValue, mimeType),
@@ -1069,6 +1072,7 @@ export function useRemote(config: RemoteConfig | null) {
   const [codexReady, setCodexReady] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [skills, setSkills] = useState<SkillOption[]>([]);
+  const [projects,setProjects]=useState<DesktopProject[]>([]);
   const [userInputsByThread,setUserInputsByThread]=useState<Record<string,UserInputRequest[]>>({});
   const userInputsRef=useRef<Record<string,UserInputRequest[]>>({});
   const [inputFreshByThread,setInputFreshByThread]=useState<Record<string,boolean>>({});
@@ -1813,6 +1817,7 @@ export function useRemote(config: RemoteConfig | null) {
             socketRef.current?.send({ type: 'threads.list', requestId: createRequestId('threads') });
           }
           socketRef.current?.send({ type: 'models.list', requestId: createRequestId('models') });
+          socketRef.current?.send({ type:'projects.list',requestId:createRequestId('projects') });
           socketRef.current?.send({ type: 'prompt.queue.list', requestId: createRequestId('queue') });
           if (selectedThreadRef.current) {
             const selected = selectedThreadRef.current;
@@ -1871,6 +1876,9 @@ export function useRemote(config: RemoteConfig | null) {
           });
           break;
         }
+        case 'projects.snapshot':
+          setProjects(message.projects);
+          break;
         case 'user-input.snapshot': {
           const requests=message.requests.filter(request=>!answeredInputIdsRef.current.has(`${request.threadId}:${request.id}`));
           userInputsRef.current={...userInputsRef.current,[message.threadId]:requests};
@@ -2121,7 +2129,7 @@ export function useRemote(config: RemoteConfig | null) {
 
     setModels([]);
     setSkills([]);
-    setUserInputsByThread({});userInputsRef.current={};invalidateInputConnection();
+    setProjects([]);setUserInputsByThread({});userInputsRef.current={};invalidateInputConnection();
     inputSubmissionIdsRef.current.clear();answeredInputIdsRef.current.clear();
     setSelectedModelState('');
     setSelectedEffortState('');
@@ -2248,13 +2256,28 @@ export function useRemote(config: RemoteConfig | null) {
     };
   }, [config, historyByThread, messagesByThread, selectedThreadId, threads]);
 
+  // Desktop project assignments can change independently from the thread index.
+  // Refresh only while the list is visible, in addition to welcome/back navigation.
+  useEffect(() => {
+    if (phase !== 'connected' || selectedThreadId) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        socketRef.current?.send({ type: 'projects.list', requestId: createRequestId('projects') });
+      }
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [phase, selectedThreadId]);
+
 
   const selectThread = useCallback((threadId: string | null) => {
     const previous = selectedThreadRef.current;
     if (previous && previous !== threadId) socketRef.current?.send({ type: 'thread.close', threadId: previous });
     selectedThreadRef.current = threadId;
     setSelectedThreadId(threadId);
-    if (!threadId) return;
+    if (!threadId) {
+      socketRef.current?.send({type:'projects.list',requestId:createRequestId('projects')});
+      return;
+    }
     setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, unread: 0 } : thread)));
     setHistoryLoadingByThread((current) => ({ ...current, [threadId]: true }));
     const sent = socketRef.current?.send({
@@ -2570,7 +2593,7 @@ export function useRemote(config: RemoteConfig | null) {
 
   const startThread = useCallback((cwd: string, model?: string, modelProvider?: string) => {
     const normalizedCwd = cwd.trim();
-    if (!normalizedCwd.startsWith('/')) {
+    if (!isAbsoluteHostPath(normalizedCwd)) {
       setLastError('工作目录必须是电脑上的绝对路径');
       return false;
     }
@@ -2750,6 +2773,7 @@ export function useRemote(config: RemoteConfig | null) {
     codexReady,
     models,
     skills,
+    projects,
     selectedUserInputs,
     userInputsReady,
     answerUserInput,
